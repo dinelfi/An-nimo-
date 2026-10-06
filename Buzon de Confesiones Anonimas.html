@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Buzón de Confesiones y Mensajes Anónimos</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google Fonts: Inter & Caveat for handwritten notes -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            handwriting: ['Caveat', 'cursive'],
+          },
+          colors: {
+            brand: {
+              50: '#f0f3ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom Scrollbar for Note Grid */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(99, 102, 241, 0.3);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(99, 102, 241, 0.6);
+    }
+    
+    .glass-card {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* Note Color Themes */
+    .note-yellow { background: #fef08a; color: #713f12; border-color: #fde047; }
+    .note-pink   { background: #fbcfe8; color: #831843; border-color: #f9a8d4; }
+    .note-blue   { background: #bfdbfe; color: #1e3a8a; border-color: #93c5fd; }
+    .note-green  { background: #bbf7d0; color: #14532d; border-color: #86efac; }
+    .note-purple { background: #e9d5ff; color: #581c87; border-color: #d8b4fe; }
+
+    /* Transitions */
+    .view-transition {
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col font-sans antialiased bg-slate-950 text-slate-100 selection:bg-indigo-500 selection:text-white">
+
+  <!-- Header Bar -->
+  <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3 cursor-pointer" onclick="app.navigateHome()">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <i class="fa-solid font-bold fa-user-secret text-white text-xl"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight bg-gradient-to-r from-white via-indigo-200 to-purple-300 bg-clip-text text-transparent">
+            Buzón Anónimo
+          </h1>
+          <p class="text-xs text-slate-400">Espacio Seguro de Expresión</p>
+        </div>
+      </div>
+
+      <!-- Active Room Status Badge & Navigation Controls -->
+      <div id="nav-room-info" class="hidden flex items-center space-x-3">
+        <div class="hidden md:flex flex-col items-end">
+          <span id="nav-room-title" class="text-xs font-semibold text-slate-200 max-w-[180px] truncate">Sala</span>
+          <span id="nav-room-status" class="text-[10px] px-2 py-0.5 rounded-full font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+            Fase Recolección
+          </span>
+        </div>
+
+        <!-- Role Selector Switcher (Demo Feature) -->
+        <div class="bg-slate-800/80 p-1 rounded-lg border border-slate-700/80 flex items-center text-xs">
+          <button id="role-btn-participant" onclick="app.switchRole('participant')" class="px-2.5 py-1 rounded-md transition-all font-medium text-slate-300">
+            <i class="fa-solid fa-user text-xs mr-1"></i> Participante
+          </button>
+          <button id="role-btn-admin" onclick="app.switchRole('admin')" class="px-2.5 py-1 rounded-md transition-all font-medium text-slate-300">
+            <i class="fa-solid fa-shield-halved text-xs mr-1"></i> Admin
+          </button>
+        </div>
+
+        <button onclick="app.leaveRoom()" class="text-slate-400 hover:text-rose-400 p-2 rounded-lg hover:bg-slate-800 transition" title="Salir de la sala">
+          <i class="fa-solid fa-right-from-bracket"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col justify-center">
+
+    <!-- VIEW 1: HOME / CREATE OR JOIN ROOM -->
+    <section id="view-home" class="view-transition max-w-xl mx-auto w-full">
+      <div class="text-center mb-8">
+        <span class="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 inline-block mb-3">
+          100% Anónimo • Sin Registro
+        </span>
+        <h2 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-3">
+          Expresa lo que no puedes decir cara a cara
+        </h2>
+        <p class="text-slate-400 text-sm sm:text-base">
+          Crea una sala temporal para tu grupo de jóvenes, comparte el enlace y lee las confesiones cuando decidas cerrar la sesión.
+        </p>
+      </div>
+
+      <div class="glass-card rounded-2xl p-6 sm:p-8 shadow-2xl relative overflow-hidden border border-slate-800">
+        <div class="absolute -top-10 -right-10 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none"></div>
+
+        <form id="form-create-room" onsubmit="app.handleCreateRoom(event)" class="space-y-5">
+          <div>
+            <label for="room-title" class="block text-xs font-medium text-slate-300 uppercase tracking-wider mb-2">
+              Nombre o Tema de la Sala
+            </label>
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                <i class="fa-solid fa-heading"></i>
+              </div>
+              <input type="text" id="room-title" required placeholder="Ej. Noche de Jóvenes: Sinceridad y Temores" 
+                class="w-full pl-10 pr-4 py-3 bg-slate-900/90 border border-slate-700/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm text-white placeholder-slate-500 transition">
+            </div>
+          </div>
+
+          <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
+            <div class="pr-4">
+              <span class="block text-sm font-medium text-slate-200">Moderación Previa</span>
+              <span class="block text-xs text-slate-400">El admin debe aprobar cada nota antes de proyectarla</span>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="room-moderation" class="sr-only peer" checked>
+              <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+            </label>
+          </div>
+
+          <button type="submit" class="w-full py-3.5 px-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold rounded-xl shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/50 transition-all duration-200 flex items-center justify-center space-x-2 group">
+            <i class="fa-solid fa-plus-circle text-lg group-hover:rotate-90 transition-transform duration-300"></i>
+            <span>Crear Sala Instantánea</span>
+          </button>
+        </form>
+
+        <div class="mt-6 pt-6 border-t border-slate-800 text-center">
+          <p class="text-xs text-slate-400 mb-3">¿Ya tienes un enlace o ID de sala?</p>
+          <div class="flex space-x-2">
+            <input type="text" id="join-room-id" placeholder="Pegar ID o enlace de la sala" 
+              class="flex-1 px-3.5 py-2 bg-slate-900/80 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500">
+            <button onclick="app.handleJoinRoom()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs rounded-lg transition border border-slate-700">
+              Unirme
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- VIEW 2: PARTICIPANT VIEW (SUBMIT ANONYMOUS NOTE) -->
+    <section id="view-participant" class="view-transition hidden max-w-lg mx-auto w-full">
+      <!-- Status Banner -->
+      <div id="participant-status-banner" class="mb-6 p-4 rounded-xl border flex items-start space-x-3 transition-all">
+        <i id="participant-status-icon" class="fa-solid text-xl mt-0.5"></i>
+        <div>
+          <h3 id="participant-status-title" class="font-semibold text-sm">Cargando estado...</h3>
+          <p id="participant-status-desc" class="text-xs opacity-90 mt-0.5">Por favor espera un momento.</p>
+        </div>
+      </div>
+
+      <!-- Submission Box Container -->
+      <div id="participant-box-container" class="glass-card rounded-2xl p-6 sm:p-8 shadow-2xl border border-slate-800 relative">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-base font-semibold text-slate-200 flex items-center">
+            <i class="fa-solid fa-pen-nib text-indigo-400 mr-2"></i> Escribe tu Mensaje Anónimo
+          </h3>
+          <span class="text-[11px] text-slate-400"><i class="fa-solid fa-user-shield text-emerald-400 mr-1"></i> 100% Incógnito</span>
+        </div>
+
+        <form id="form-submit-note" onsubmit="app.handleSendNote(event)" class="space-y-4">
+          <!-- Textarea area designed to look like a post-it -->
+          <div class="relative">
+            <textarea id="note-content" required rows="5" maxlength="280" placeholder="Escribe aquí lo que deseas expresar sin presiones ni juzgamientos..."
+              class="w-full p-4 rounded-xl font-handwriting text-2xl border transition focus:outline-none resize-none shadow-inner note-yellow"
+              oninput="app.updateCharCount(this)"></textarea>
+            <div class="absolute bottom-3 right-3 text-xs opacity-60 font-sans font-medium" id="char-counter">0 / 280</div>
+          </div>
+
+          <!-- Color Customizer for Post-it -->
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-2">Color del Post-It:</label>
+            <div class="flex items-center space-x-3">
+              <button type="button" onclick="app.selectNoteColor('note-yellow')" class="w-8 h-8 rounded-full bg-yellow-200 border-2 border-yellow-400 ring-2 ring-indigo-500 color-picker-btn transition transform hover:scale-105" data-color="note-yellow"></button>
+              <button type="button" onclick="app.selectNoteColor('note-pink')" class="w-8 h-8 rounded-full bg-pink-200 border-2 border-pink-400 color-picker-btn transition transform hover:scale-105" data-color="note-pink"></button>
+              <button type="button" onclick="app.selectNoteColor('note-blue')" class="w-8 h-8 rounded-full bg-blue-200 border-2 border-blue-400 color-picker-btn transition transform hover:scale-105" data-color="note-blue"></button>
+              <button type="button" onclick="app.selectNoteColor('note-green')" class="w-8 h-8 rounded-full bg-green-200 border-2 border-green-400 color-picker-btn transition transform hover:scale-105" data-color="note-green"></button>
+              <button type="button" onclick="app.selectNoteColor('note-purple')" class="w-8 h-8 rounded-full bg-purple-200 border-2 border-purple-400 color-picker-btn transition transform hover:scale-105" data-color="note-purple"></button>
+            </div>
+          </div>
+
+          <button type="submit" id="btn-send-note" class="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl shadow-lg shadow-indigo-600/30 transition flex items-center justify-center space-x-2">
+            <i class="fa-solid fa-paper-plane"></i>
+            <span>Enviar Nota Anónimamente</span>
+          </button>
+        </form>
+
+        <!-- Feedback Success Screen -->
+        <div id="note-success-message" class="hidden text-center py-8 space-y-4">
+          <div class="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto text-3xl animate-bounce">
+            <i class="fa-solid fa-check"></i>
+          </div>
+          <h3 class="text-xl font-bold text-white">¡Mensaje Recibido de Forma Anónima!</h3>
+          <p class="text-slate-300 text-sm max-w-xs mx-auto">
+            Tu nota ha sido guardada en el buzón. Nadie sabrá quién la escribió.
+          </p>
+          <button onclick="app.resetSubmissionForm()" class="mt-4 px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition border border-slate-700">
+            <i class="fa-solid fa-plus mr-1"></i> Escribir Otra Nota
+          </button>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- VIEW 3: ADMIN / MODERATOR DASHBOARD -->
+    <section id="view-admin" class="view-transition hidden w-full space-y-6">
+      
+      <!-- Top Control Header Bar -->
+      <div class="glass-card rounded-2xl p-5 sm:p-6 border border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="px-2.5 py-0.5 rounded text-[11px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">Panel del Creador</span>
+            <span id="admin-moderation-badge" class="px-2.5 py-0.5 rounded text-[11px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">Moderación Activa</span>
+          </div>
+          <h2 id="admin-room-title" class="text-2xl font-bold text-white mt-1">Noche de Jóvenes</h2>
+          <p class="text-xs text-slate-400 mt-0.5 flex items-center space-x-2">
+            <span>Enlace de la Sala:</span>
+            <span id="admin-room-link-text" class="text-indigo-400 font-mono">buzon.local/room/xyz</span>
+            <button onclick="app.copyRoomLink()" class="text-slate-400 hover:text-white ml-1 transition" title="Copiar Link">
+              <i class="fa-regular fa-copy"></i>
+            </button>
+          </p>
+        </div>
+
+        <!-- Room State Toggle Controls -->
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="bg-slate-900/90 p-1.5 rounded-xl border border-slate-800 flex items-center">
+            <button id="btn-state-collecting" onclick="app.setRoomPhase('collecting')" class="px-3.5 py-2 rounded-lg text-xs font-semibold transition flex items-center space-x-2">
+              <i class="fa-solid fa-box-archive"></i>
+              <span>Fase Recolección (Abierta)</span>
+            </button>
+            <button id="btn-state-reading" onclick="app.setRoomPhase('reading')" class="px-3.5 py-2 rounded-lg text-xs font-semibold transition flex items-center space-x-2">
+              <i class="fa-solid fa-lock"></i>
+              <span>Fase Lectura (Cerrada)</span>
+            </button>
+          </div>
+
+          <button onclick="app.openPresentationMode()" class="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs rounded-xl shadow-lg transition flex items-center space-x-2">
+            <i class="fa-solid fa-expand"></i>
+            <span>Proyectar Pantalla Gigante</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Dashboard Tabs (Approved Wall vs Moderation Queue) -->
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center space-x-4">
+          <button id="tab-btn-wall" onclick="app.switchAdminTab('wall')" class="text-sm font-semibold pb-2 border-b-2 border-indigo-500 text-indigo-400 flex items-center space-x-2">
+            <i class="fa-solid fa-border-all"></i>
+            <span>Muro de Confesiones</span>
+            <span id="counter-approved" class="px-2 py-0.5 rounded-full text-xs bg-slate-800 text-slate-300">0</span>
+          </button>
+          <button id="tab-btn-queue" onclick="app.switchAdminTab('queue')" class="text-sm font-semibold pb-2 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2 relative">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+            <span>Pendientes por Moderar</span>
+            <span id="counter-pending" class="px-2 py-0.5 rounded-full text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30">0</span>
+          </button>
+        </div>
+
+        <div class="flex items-center space-x-2 text-xs text-slate-400">
+          <button onclick="app.exportNotesSummary()" class="hover:text-white px-2.5 py-1.5 bg-slate-900 rounded-lg border border-slate-800 transition">
+            <i class="fa-solid fa-download mr-1"></i> Descargar Notas
+          </button>
+          <button onclick="app.destroyRoom()" class="hover:text-rose-400 px-2.5 py-1.5 bg-slate-900 rounded-lg border border-slate-800 transition">
+            <i class="fa-solid fa-trash mr-1"></i> Destruir Sala
+          </button>
+        </div>
+      </div>
+
+      <!-- TAB 1: WALL OF APPROVED NOTES -->
+      <div id="admin-tab-wall" class="space-y-4">
+        <div id="grid-approved-notes" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <!-- Dynamic Note Cards injected here -->
+        </div>
+        <div id="empty-wall-msg" class="hidden text-center py-16 border-2 border-dashed border-slate-800 rounded-2xl">
+          <i class="fa-solid fa-comments text-4xl text-slate-700 mb-3 block"></i>
+          <p class="text-slate-400 text-sm">No hay notas aprobadas visibles en este momento.</p>
+          <p class="text-xs text-slate-500 mt-1">Cambia de pestaña si tienes notas pendientes de moderar o invita a participantes a escribir.</p>
+        </div>
+      </div>
+
+      <!-- TAB 2: MODERATION QUEUE -->
+      <div id="admin-tab-queue" class="hidden space-y-4">
+        <div id="grid-pending-notes" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <!-- Pending Notes injected here -->
+        </div>
+        <div id="empty-queue-msg" class="hidden text-center py-16 border-2 border-dashed border-slate-800 rounded-2xl">
+          <i class="fa-solid fa-circle-check text-4xl text-emerald-600/50 mb-3 block"></i>
+          <p class="text-slate-400 text-sm">¡Excelente! No hay notas pendientes de moderación.</p>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- MODAL: PRESENTATION / BIG SCREEN SLIDE SHOW -->
+  <div id="modal-presentation" class="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-xl hidden flex flex-col justify-between p-6 sm:p-10">
+    <!-- Header -->
+    <div class="flex items-center justify-between text-slate-400">
+      <div class="flex items-center space-x-3">
+        <div class="w-8 h-8 rounded-lg bg-indigo-600/30 flex items-center justify-center text-indigo-400">
+          <i class="fa-solid fa-desktop"></i>
+        </div>
+        <div>
+          <h3 id="presentation-room-title" class="text-sm font-semibold text-white">Modo Lectura Proyectada</h3>
+          <span class="text-xs text-slate-500">Usa las flechas del teclado o los botones para navegar</span>
+        </div>
+      </div>
+      
+      <div class="flex items-center space-x-3">
+        <span id="presentation-counter" class="text-xs font-mono font-bold bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">0 / 0</span>
+        <button onclick="app.closePresentationMode()" class="w-9 h-9 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Center Slide View -->
+    <div class="flex-1 flex items-center justify-center py-6 px-4">
+      <div id="presentation-card-container" class="w-full max-w-2xl min-h-[320px] rounded-3xl p-8 sm:p-12 flex flex-col justify-between shadow-2xl transition-all transform duration-300 note-yellow">
+        <div class="flex items-center justify-between opacity-70 text-xs font-semibold uppercase tracking-wider mb-4">
+          <span><i class="fa-solid fa-quote-left mr-2"></i> Confesión Anónima</span>
+          <span id="presentation-note-date">Hace unos momentos</span>
+        </div>
+
+        <div class="flex-1 flex items-center justify-center my-4">
+          <p id="presentation-note-text" class="font-handwriting text-3xl sm:text-4xl md:text-5xl text-center leading-relaxed">
+            "Cargando notas..."
+          </p>
+        </div>
+
+        <div class="flex items-center justify-between border-t border-black/10 pt-4">
+          <span id="presentation-read-status" class="text-xs font-sans font-semibold opacity-70">
+            <i class="fa-regular fa-eye mr-1"></i> No Leída
+          </span>
+          <button id="btn-toggle-read" onclick="app.toggleCurrentNoteReadState()" class="px-3 py-1 bg-black/10 hover:bg-black/20 text-xs font-sans font-semibold rounded-lg transition">
+            Marcar como Leída
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation Footer Bar -->
+    <div class="flex items-center justify-center space-x-6">
+      <button onclick="app.prevSlide()" class="px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-800 transition flex items-center space-x-2 text-sm font-semibold">
+        <i class="fa-solid fa-arrow-left"></i>
+        <span>Anterior</span>
+      </button>
+
+      <button onclick="app.nextSlide()" class="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shadow-lg shadow-indigo-600/30 transition flex items-center space-x-2 text-sm">
+        <span>Siguiente Nota</span>
+        <i class="fa-solid fa-arrow-right"></i>
+      </button>
+    </div>
+  </div>
+
+
+  <script>
+    /**
+     * Anonymity Confession App Core Logic
+     */
+    class ConfessionApp {
+      constructor() {
+        this.currentRoom = null;
+        this.currentRole = 'participant'; // 'participant' | 'admin'
+        this.selectedColor = 'note-yellow';
+        this.activeAdminTab = 'wall'; // 'wall' | 'queue'
+        
+        // Presentation Mode State
+        this.presentationIndex = 0;
+        this.presentationNotes = [];
+
+        this.initDemoData();
+      }
+
+      // Initialize default session state or load existing room from local memory
+      initDemoData() {
+        const savedRoom = localStorage.getItem('confession_app_demo_room');
+        if (savedRoom) {
+          try {
+            this.currentRoom = JSON.parse(savedRoom);
+          } catch(e) {
+            this.currentRoom = this.createDefaultRoomObject("Noche de Jóvenes: Sinceridad", true);
+          }
+        } else {
+          this.currentRoom = this.createDefaultRoomObject("Noche de Jóvenes: Sinceridad", true);
+          
+          // Seed with pre-populated anonymous entries for testing
+          this.currentRoom.notes = [
+            {
+              id: 'note-1',
+              content: 'A veces me siento muy solo incluso estando rodeado de todos en el grupo, pero me da miedo admitirlo.',
+              color: 'note-yellow',
+              approved: true,
+              read: false,
+              timestamp: Date.now() - 3600000 * 2
+            },
+            {
+              id: 'note-2',
+              content: 'Quiero pedirle perdón a la persona con la que discutí el domingo pasado, no debí reaccionar así.',
+              color: 'note-pink',
+              approved: true,
+              read: true,
+              timestamp: Date.now() - 3600000 * 1.5
+            },
+            {
+              id: 'note-3',
+              content: 'Siento que la presión de la universidad me está ganando y no sé cómo lidiar con las expectativas.',
+              color: 'note-blue',
+              approved: true,
+              read: false,
+              timestamp: Date.now() - 3600000
+            },
+            {
+              id: 'note-4',
+              content: 'Me alegra mucho haber venido hoy a esta reunión, realmente necesitaba desconectarme.',
+              color: 'note-green',
+              approved: false, // Pending moderation
+              read: false,
+              timestamp: Date.now() - 1800000
+            }
+          ];
+          this.saveRoomState();
+        }
+      }
+
+      createDefaultRoomObject(title, moderationActive = true) {
+        const roomId = 'sala-' + Math.random().toString(36).substring(2, 8);
+        return {
+          id: roomId,
+          title: title || 'Sala Anónima',
+          moderation: moderationActive,
+          phase: 'collecting', // 'collecting' | 'reading'
+          createdAt: Date.now(),
+          notes: []
+        };
+      }
+
+      saveRoomState() {
+        if (this.currentRoom) {
+          localStorage.setItem('confession_app_demo_room', JSON.stringify(this.currentRoom));
+        }
+      }
+
+      navigateHome() {
+        document.getElementById('view-home').classList.remove('hidden');
+        document.getElementById('view-participant').classList.add('hidden');
+        document.getElementById('view-admin').classList.add('hidden');
+        document.getElementById('nav-room-info').classList.add('hidden');
+      }
+
+      handleCreateRoom(event) {
+        event.preventDefault();
+        const titleInput = document.getElementById('room-title').value.trim();
+        const moderationInput = document.getElementById('room-moderation').checked;
+
+        this.currentRoom = this.createDefaultRoomObject(titleInput, moderationInput);
+        this.saveRoomState();
+
+        // Default to Admin view when created
+        this.currentRole = 'admin';
+        this.enterRoom();
+      }
+
+      handleJoinRoom() {
+        const inputVal = document.getElementById('join-room-id').value.trim();
+        if (!inputVal) {
+          alert('Por favor introduce un enlace o código de sala válido.');
+          return;
+        }
+        
+        // Load demo room
+        if (!this.currentRoom) {
+          this.currentRoom = this.createDefaultRoomObject('Sala de Jóvenes', true);
+        }
+        this.currentRole = 'participant';
+        this.enterRoom();
+      }
+
+      enterRoom() {
+        if (!this.currentRoom) return;
+
+        // Show header status
+        document.getElementById('nav-room-info').classList.remove('hidden');
+        document.getElementById('nav-room-title').innerText = this.currentRoom.title;
+
+        this.updateHeaderRoomStatus();
+        this.switchRole(this.currentRole);
+      }
+
+      leaveRoom() {
+        if (confirm('¿Deseas salir de la sala actual?')) {
+          this.navigateHome();
+        }
+      }
+
+      switchRole(role) {
+        this.currentRole = role;
+
+        // Button Styling
+        const btnPart = document.getElementById('role-btn-participant');
+        const btnAdmin = document.getElementById('role-btn-admin');
+
+        if (role === 'participant') {
+          btnPart.className = "px-2.5 py-1 rounded-md transition-all font-medium bg-indigo-600 text-white shadow-sm";
+          btnAdmin.className = "px-2.5 py-1 rounded-md transition-all font-medium text-slate-400 hover:text-white";
+
+          document.getElementById('view-home').classList.add('hidden');
+          document.getElementById('view-admin').classList.add('hidden');
+          document.getElementById('view-participant').classList.remove('hidden');
+          this.renderParticipantView();
+
+        } else {
+          btnAdmin.className = "px-2.5 py-1 rounded-md transition-all font-medium bg-indigo-600 text-white shadow-sm";
+          btnPart.className = "px-2.5 py-1 rounded-md transition-all font-medium text-slate-400 hover:text-white";
+
+          document.getElementById('view-home').classList.add('hidden');
+          document.getElementById('view-participant').classList.add('hidden');
+          document.getElementById('view-admin').classList.remove('hidden');
+          this.renderAdminDashboard();
+        }
+      }
+
+      updateHeaderRoomStatus() {
+        const statusElem = document.getElementById('nav-room-status');
+        if (this.currentRoom.phase === 'collecting') {
+          statusElem.innerText = "Fase Recolección";
+          statusElem.className = "text-[10px] px-2 py-0.5 rounded-full font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+        } else {
+          statusElem.innerText = "Fase Lectura (Cerrada)";
+          statusElem.className = "text-[10px] px-2 py-0.5 rounded-full font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30";
+        }
+      }
+
+      renderParticipantView() {
+        const banner = document.getElementById('participant-status-banner');
+        const icon = document.getElementById('participant-status-icon');
+        const title = document.getElementById('participant-status-title');
+        const desc = document.getElementById('participant-status-desc');
+        const formContainer = document.getElementById('participant-box-container');
+
+        if (this.currentRoom.phase === 'collecting') {
+          banner.className = "mb-6 p-4 rounded-xl border flex items-start space-x-3 bg-emerald-500/10 border-emerald-500/30 text-emerald-300";
+          icon.className = "fa-solid fa-door-open text-xl mt-0.5 text-emerald-400";
+          title.innerText = "La Sala está Abierta para Recibir Notas";
+          desc.innerText = "Tus mensajes son 100% anónimos. Nadie podrá ver quién los envió.";
+          
+          document.getElementById('form-submit-note').classList.remove('hidden');
+          document.getElementById('note-success-message').classList.add('hidden');
+        } else {
+          banner.className = "mb-6 p-4 rounded-xl border flex items-start space-x-3 bg-amber-500/10 border-amber-500/30 text-amber-300";
+          icon.className = "fa-solid fa-lock text-xl mt-0.5 text-amber-400";
+          title.innerText = "Fase de Lectura en Curso";
+          desc.innerText = "La recepción de notas se ha cerrado. El líder o admin está leyendo los mensajes con el grupo.";
+          
+          document.getElementById('form-submit-note').classList.add('hidden');
+          document.getElementById('note-success-message').classList.add('hidden');
+        }
+      }
+
+      selectNoteColor(colorClass) {
+        this.selectedColor = colorClass;
+        const textarea = document.getElementById('note-content');
+        
+        // Remove existing note classes
+        textarea.classList.remove('note-yellow', 'note-pink', 'note-blue', 'note-green', 'note-purple');
+        textarea.classList.add(colorClass);
+
+        // Update button highlight
+        document.querySelectorAll('.color-picker-btn').forEach(btn => {
+          if (btn.getAttribute('data-color') === colorClass) {
+            btn.classList.add('ring-2', 'ring-indigo-500');
+          } else {
+            btn.classList.remove('ring-2', 'ring-indigo-500');
+          }
+        });
+      }
+
+      updateCharCount(textarea) {
+        const charCounter = document.getElementById('char-counter');
+        charCounter.innerText = `${textarea.value.length} / 280`;
+      }
+
+      handleSendNote(event) {
+        event.preventDefault();
+        const contentInput = document.getElementById('note-content').value.trim();
+
+        if (!contentInput) return;
+
+        const newNote = {
+          id: 'note-' + Date.now(),
+          content: contentInput,
+          color: this.selectedColor,
+          approved: !this.currentRoom.moderation, // If moderation off, auto approve
+          read: false,
+          timestamp: Date.now()
+        };
+
+        this.currentRoom.notes.unshift(newNote);
+        this.saveRoomState();
+
+        // Show Success View
+        document.getElementById('form-submit-note').classList.add('hidden');
+        document.getElementById('note-success-message').classList.remove('hidden');
+      }
+
+      resetSubmissionForm() {
+        document.getElementById('note-content').value = '';
+        document.getElementById('char-counter').innerText = '0 / 280';
+        document.getElementById('form-submit-note').classList.remove('hidden');
+        document.getElementById('note-success-message').classList.add('hidden');
+      }
+
+      renderAdminDashboard() {
+        document.getElementById('admin-room-title').innerText = this.currentRoom.title;
+        document.getElementById('admin-room-link-text').innerText = `${window.location.host}/#${this.currentRoom.id}`;
+
+        const modBadge = document.getElementById('admin-moderation-badge');
+        if (this.currentRoom.moderation) {
+          modBadge.innerText = "Moderación Activa";
+          modBadge.className = "px-2.5 py-0.5 rounded text-[11px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30";
+        } else {
+          modBadge.innerText = "Paso Directo";
+          modBadge.className = "px-2.5 py-0.5 rounded text-[11px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30";
+        }
+
+        // Update Buttons for Collecting vs Reading State
+        const btnCollecting = document.getElementById('btn-state-collecting');
+        const btnReading = document.getElementById('btn-state-reading');
+
+        if (this.currentRoom.phase === 'collecting') {
+          btnCollecting.className = "px-3.5 py-2 rounded-lg text-xs font-semibold bg-emerald-600 text-white shadow-md transition flex items-center space-x-2";
+          btnReading.className = "px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition flex items-center space-x-2";
+        } else {
+          btnReading.className = "px-3.5 py-2 rounded-lg text-xs font-semibold bg-amber-600 text-white shadow-md transition flex items-center space-x-2";
+          btnCollecting.className = "px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition flex items-center space-x-2";
+        }
+
+        this.renderAdminNotesGrids();
+      }
+
+      setRoomPhase(phase) {
+        this.currentRoom.phase = phase;
+        this.saveRoomState();
+        this.updateHeaderRoomStatus();
+        this.renderAdminDashboard();
+      }
+
+      switchAdminTab(tab) {
+        this.activeAdminTab = tab;
+        const tabWall = document.getElementById('tab-btn-wall');
+        const tabQueue = document.getElementById('tab-btn-queue');
+        const contentWall = document.getElementById('admin-tab-wall');
+        const contentQueue = document.getElementById('admin-tab-queue');
+
+        if (tab === 'wall') {
+          tabWall.className = "text-sm font-semibold pb-2 border-b-2 border-indigo-500 text-indigo-400 flex items-center space-x-2";
+          tabQueue.className = "text-sm font-semibold pb-2 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2";
+          contentWall.classList.remove('hidden');
+          contentQueue.classList.add('hidden');
+        } else {
+          tabQueue.className = "text-sm font-semibold pb-2 border-b-2 border-amber-500 text-amber-400 flex items-center space-x-2";
+          tabWall.className = "text-sm font-semibold pb-2 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2";
+          contentQueue.classList.remove('hidden');
+          contentWall.classList.add('hidden');
+        }
+      }
+
+      renderAdminNotesGrids() {
+        const approvedNotes = this.currentRoom.notes.filter(n => n.approved);
+        const pendingNotes = this.currentRoom.notes.filter(n => !n.approved);
+
+        // Update Counters
+        document.getElementById('counter-approved').innerText = approvedNotes.length;
+        document.getElementById('counter-pending').innerText = pendingNotes.length;
+
+        // Render Approved Grid
+        const gridApproved = document.getElementById('grid-approved-notes');
+        gridApproved.innerHTML = '';
+
+        if (approvedNotes.length === 0) {
+          document.getElementById('empty-wall-msg').classList.remove('hidden');
+        } else {
+          document.getElementById('empty-wall-msg').classList.add('hidden');
+          approvedNotes.forEach(note => {
+            gridApproved.appendChild(this.createNoteCardHTML(note, false));
+          });
+        }
+
+        // Render Pending Grid
+        const gridPending = document.getElementById('grid-pending-notes');
+        gridPending.innerHTML = '';
+
+        if (pendingNotes.length === 0) {
+          document.getElementById('empty-queue-msg').classList.remove('hidden');
+        } else {
+          document.getElementById('empty-queue-msg').classList.add('hidden');
+          pendingNotes.forEach(note => {
+            gridPending.appendChild(this.createNoteCardHTML(note, true));
+          });
+        }
+      }
+
+      createNoteCardHTML(note, isPending) {
+        const card = document.createElement('div');
+        card.className = `rounded-2xl p-5 shadow-lg border flex flex-col justify-between min-h-[180px] transition transform hover:-translate-y-1 ${note.color}`;
+
+        const readBadge = note.read 
+          ? `<span class="text-[10px] font-sans font-bold px-2 py-0.5 rounded bg-black/10 opacity-70"><i class="fa-solid fa-check-double mr-1"></i> Leída</span>`
+          : `<span class="text-[10px] font-sans font-bold px-2 py-0.5 rounded bg-indigo-600 text-white"><i class="fa-solid fa-circle mr-1 text-[8px]"></i> Nueva</span>`;
+
+        card.innerHTML = `
+          <div>
+            <div class="flex items-center justify-between mb-3 text-xs font-semibold opacity-75">
+              <span><i class="fa-solid fa-user-secret mr-1"></i> Anónimo</span>
+              ${!isPending ? readBadge : '<span class="text-[10px] font-bold text-amber-800 uppercase">Pendiente</span>'}
+            </div>
+            <p class="font-handwriting text-2xl leading-snug break-words">
+              "${this.escapeHtml(note.content)}"
+            </p>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-black/10 flex items-center justify-between text-xs font-sans">
+            ${isPending ? `
+              <button onclick="app.approveNote('${note.id}')" class="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold rounded-lg shadow transition flex items-center space-x-1">
+                <i class="fa-solid fa-check"></i> <span>Aprobar</span>
+              </button>
+              <button onclick="app.deleteNote('${note.id}')" class="px-2.5 py-1.5 bg-rose-700/20 hover:bg-rose-700/30 text-rose-900 rounded-lg transition">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            ` : `
+              <button onclick="app.toggleReadStatus('${note.id}')" class="text-xs font-semibold opacity-80 hover:opacity-100 transition">
+                <i class="fa-regular fa-eye mr-1"></i> ${note.read ? 'Marcar No Leída' : 'Marcar Leída'}
+              </button>
+              <button onclick="app.deleteNote('${note.id}')" class="opacity-60 hover:opacity-100 transition text-rose-900" title="Eliminar nota">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+            `}
+          </div>
+        `;
+        return card;
+      }
+
+      approveNote(noteId) {
+        const note = this.currentRoom.notes.find(n => n.id === noteId);
+        if (note) {
+          note.approved = true;
+          this.saveRoomState();
+          this.renderAdminNotesGrids();
+        }
+      }
+
+      toggleReadStatus(noteId) {
+        const note = this.currentRoom.notes.find(n => n.id === noteId);
+        if (note) {
+          note.read = !note.read;
+          this.saveRoomState();
+          this.renderAdminNotesGrids();
+        }
+      }
+
+      deleteNote(noteId) {
+        if (confirm('¿Eliminar esta nota?')) {
+          this.currentRoom.notes = this.currentRoom.notes.filter(n => n.id !== noteId);
+          this.saveRoomState();
+          this.renderAdminNotesGrids();
+        }
+      }
+
+      copyRoomLink() {
+        const link = `${window.location.origin}/#${this.currentRoom.id}`;
+        navigator.clipboard.writeText(link).then(() => {
+          alert('¡Enlace de la sala copiado al portapapeles!');
+        }).catch(() => {
+          // Fallback
+          const textarea = document.createElement('textarea');
+          textarea.value = link;
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textarea);
+          alert('¡Enlace copiado!');
+        });
+      }
+
+      exportNotesSummary() {
+        const approvedNotes = this.currentRoom.notes.filter(n => n.approved);
+        if (approvedNotes.length === 0) {
+          alert('No hay notas aprobadas para exportar.');
+          return;
+        }
+
+        let summaryText = `RESUMEN DE CONFESIONES - ${this.currentRoom.title}\n`;
+        summaryText += `Fecha: ${new Date().toLocaleDateString()}\n`;
+        summaryText += `Total de mensajes: ${approvedNotes.length}\n`;
+        summaryText += `--------------------------------------------------\n\n`;
+
+        approvedNotes.forEach((n, idx) => {
+          summaryText += `${idx + 1}. "${n.content}"\n\n`;
+        });
+
+        const blob = new Blob([summaryText], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Confesiones_${this.currentRoom.id}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      destroyRoom() {
+        if (confirm('¿Estás seguro de destruir la sala y eliminar permanentemente todas las notas?')) {
+          localStorage.removeItem('confession_app_demo_room');
+          this.currentRoom = null;
+          this.navigateHome();
+        }
+      }
+
+      openPresentationMode() {
+        this.presentationNotes = this.currentRoom.notes.filter(n => n.approved);
+        if (this.presentationNotes.length === 0) {
+          alert('No hay notas aprobadas para proyectar.');
+          return;
+        }
+
+        this.presentationIndex = 0;
+        document.getElementById('presentation-room-title').innerText = this.currentRoom.title;
+        document.getElementById('modal-presentation').classList.remove('hidden');
+        this.renderPresentationSlide();
+
+        // Keyboard navigation listener
+        this.keyListener = (e) => {
+          if (e.key === 'ArrowRight') this.nextSlide();
+          if (e.key === 'ArrowLeft') this.prevSlide();
+          if (e.key === 'Escape') this.closePresentationMode();
+        };
+        window.addEventListener('keydown', this.keyListener);
+      }
+
+      closePresentationMode() {
+        document.getElementById('modal-presentation').classList.add('hidden');
+        if (this.keyListener) {
+          window.removeEventListener('keydown', this.keyListener);
+        }
+        this.renderAdminNotesGrids();
+      }
+
+      renderPresentationSlide() {
+        if (this.presentationNotes.length === 0) return;
+
+        const currentNote = this.presentationNotes[this.presentationIndex];
+        const container = document.getElementById('presentation-card-container');
+        
+        // Remove existing note styles
+        container.className = `w-full max-w-2xl min-h-[340px] rounded-3xl p-8 sm:p-12 flex flex-col justify-between shadow-2xl transition-all transform duration-300 ${currentNote.color}`;
+
+        document.getElementById('presentation-note-text').innerText = `"${currentNote.content}"`;
+        document.getElementById('presentation-counter').innerText = `${this.presentationIndex + 1} / ${this.presentationNotes.length}`;
+
+        const readStatus = document.getElementById('presentation-read-status');
+        const btnToggleRead = document.getElementById('btn-toggle-read');
+
+        if (currentNote.read) {
+          readStatus.innerHTML = `<i class="fa-solid fa-check-double text-emerald-700 mr-1"></i> Leída`;
+          btnToggleRead.innerText = "Marcar No Leída";
+        } else {
+          readStatus.innerHTML = `<i class="fa-regular fa-eye mr-1"></i> Sin Leer`;
+          btnToggleRead.innerText = "Marcar como Leída";
+        }
+      }
+
+      toggleCurrentNoteReadState() {
+        if (this.presentationNotes.length === 0) return;
+        const currentNote = this.presentationNotes[this.presentationIndex];
+        currentNote.read = !currentNote.read;
+        
+        // Persist to main state
+        const originalNote = this.currentRoom.notes.find(n => n.id === currentNote.id);
+        if (originalNote) {
+          originalNote.read = currentNote.read;
+          this.saveRoomState();
+        }
+        this.renderPresentationSlide();
+      }
+
+      nextSlide() {
+        if (this.presentationIndex < this.presentationNotes.length - 1) {
+          this.presentationIndex++;
+          this.renderPresentationSlide();
+        }
+      }
+
+      prevSlide() {
+        if (this.presentationIndex > 0) {
+          this.presentationIndex--;
+          this.renderPresentationSlide();
+        }
+      }
+
+      escapeHtml(str) {
+        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+      }
+    }
+
+    // Bootstrapping the app engine
+    let app;
+    window.onload = () => {
+      app = new ConfessionApp();
+    };
+  </script>
+</body>
+</html>
